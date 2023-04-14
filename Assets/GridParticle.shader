@@ -4,6 +4,7 @@ Shader "Instanced/GridTestParticleShader" {
 		_Glossiness("Smoothness", Range(0,1)) = 0.5
 		_Metallic("Metallic", Range(0,1)) = 0.0
         _Color("Color", Color) = (0.25, 0.5, 0.5, 1)
+		_DensityRange ("Density Range", Range(0,500)) = 1.0
 	}
 		SubShader{
 			Tags { "RenderType" = "Opaque" }
@@ -18,6 +19,7 @@ Shader "Instanced/GridTestParticleShader" {
 			sampler2D _MainTex;
 			float _size;
             float3 _Color;
+			float _DensityRange;
 
 			struct Input {
 				float2 uv_MainTex;

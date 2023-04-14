@@ -1,0 +1,64 @@
+#pragma kernel ComputeDensityPressure
+#pragma kernel ComputeForces
+#pragma kernel Integrate
+
+struct Particle
+{
+    float pressure;
+    float density;
+    float3 currentForce;
+    float3 velocity;
+    float3 position;
+};
+
+RWStructuredBuffer<Particle> _particles;
+
+float particleMass = 2;
+float viscosity = 200;
+float gasConstant = 2000;
+float restDensity = 300;
+float boundDamping = -0.5;
+float radius = 2;
+float radius2 = 4;
+float pi = 3.1415926535897932384626433832795028841971;
+
+int particleLength;
+
+// Pre-computed
+float densityWeightConstant = 0.00497359197162172924277761760539;
+
+float3 boxSize;
+
+[numthreads(100,1,1)]
+void ComputeDensityPressure (uint3 id: SV_DISPATCHTHREADID)
+{
+    
+   float3 origin = _particles[id.x].position;
+   float sum = 0;
+   
+   for (int i = 0; i < particleLength; i++) {
+        float3 diff = origin - _particles[i].position;
+        float distanceSquared = dot(diff, diff);
+        
+        if (radius2 > distanceSquared) {
+            float x = radius2 - distanceSquared;
+            sum += particleMass * densityWeightConstant * x * x * x;
+        } 
+   }
+   
+   _particles[id.x].density = sum;
+   _particles[id.x].pressure = gasConstant * (_particles[id.x].density - restDensity);
+   _particles[id.x].position -= float3(0,-0.01, 0);
+}
+
+[numthreads(100,1,1)]
+void ComputeForces (uint3 id: SV_DISPATCHTHREADID)
+{
+    
+}
+
+[numthreads(100,1,1)]
+void Integrate (uint3 id: SV_DISPATCHTHREADID)
+{
+    
+}

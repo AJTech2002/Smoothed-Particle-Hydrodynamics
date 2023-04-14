@@ -17,6 +17,7 @@ public class SPH_Compute : MonoBehaviour
 
 
     [Header("General")]
+    public int numToSpawn = 400;
     public Vector3 boxSize;
     public Vector3 spawnBoxCenter;
     public Vector3 spawnBox;
@@ -68,9 +69,25 @@ public class SPH_Compute : MonoBehaviour
         InitializeComputeBuffers();
     }
     
+    private int densityPressureKernel;
+    private int computeForceKernel;
+    
+    private int integrateKernel;
+    
     private void InitializeComputeBuffers() {
         _particlesBuffer = new ComputeBuffer(num, 44);
         _particlesBuffer.SetData(particles);
+        
+        densityPressureKernel = shader.FindKernel("ComputeDensityPressure");
+        computeForceKernel = shader.FindKernel("ComputeForces");
+        integrateKernel = shader.FindKernel("Integrate");
+        
+        shader.SetInt("particleLength", num);
+        
+        shader.SetBuffer(densityPressureKernel, "_particles", _particlesBuffer);
+        shader.SetBuffer(computeForceKernel, "_particles", _particlesBuffer);
+        shader.SetBuffer(integrateKernel, "_particles", _particlesBuffer);
+        
     }
 
 
@@ -80,31 +97,45 @@ public class SPH_Compute : MonoBehaviour
         int yIterations = Mathf.RoundToInt(spawnBox.y / (particleRadius * 2));
         int zIterations = Mathf.RoundToInt(spawnBox.z / (particleRadius * 2));
 
-        num = xIterations * yIterations * zIterations;
+        // num = xIterations * yIterations * zIterations;
 
         List<Particle> _particles = new List<Particle>();
 
-        for (int x = 1; x < xIterations; x++) {
-            for (int y = 1; y < yIterations; y++) {
-                for (int z = 1; z < zIterations; z++) {
+        // for (int x = 1; x < xIterations; x++) {
+        //     for (int y = 1; y < yIterations; y++) {
+        //         for (int z = 1; z < zIterations; z++) {
 
-                    Vector3 spawnPosition = spawnTopLeft + new Vector3(x * particleRadius * 2, y * particleRadius * 2, z * particleRadius * 2) + Random.onUnitSphere * particleRadius * 0.5f;
+        //             Vector3 spawnPosition = spawnTopLeft + new Vector3(x * particleRadius * 2, y * particleRadius * 2, z * particleRadius * 2) + Random.onUnitSphere * particleRadius * 0.5f;
 
-                    Particle p = new Particle
-                    {
-                        position = spawnPosition
-                    };
+        //             Particle p = new Particle
+        //             {
+        //                 position = spawnPosition
+        //             };
 
-                    _particles.Add(p);
-                }
-            }
+        //             _particles.Add(p);
+        //         }
+        //     }
+        // }
+        
+        for (int i = 0; i < numToSpawn; i++) {
+            Vector3 spawnPos = spawnBoxCenter + Random.onUnitSphere * spawnBox.x;
+             Particle p = new Particle
+            {
+                position = spawnPos
+            };
+
+            _particles.Add(p);
         }
+        
+        num = numToSpawn;
 
         particles = _particles.ToArray();
 
     }
 
     private void Update() {
+        
+        shader.Dispatch(densityPressureKernel, num/100, 1, 1);
 
         material.SetFloat(SizeProperty, particleRenderSize);
         material.SetBuffer(ParticlesBufferProperty, _particlesBuffer);

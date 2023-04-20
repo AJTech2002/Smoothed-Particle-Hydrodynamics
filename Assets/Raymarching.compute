@@ -1,0 +1,173 @@
+#pragma kernel CSMain
+
+Texture2D<float4> Source;
+RWTexture2D<float4> Destination;
+
+float4x4 _CameraToWorld;
+float4x4 _CameraInverseProjection;
+
+static const float maxDst = 80;
+static const float epsilon = 0.001f;
+static const float shadowBias = epsilon * 50;
+
+struct Particle
+{
+    float pressure;
+    float density;
+    float3 currentForce;
+    float3 velocity;
+    float3 position;
+};
+
+StructuredBuffer<Particle> particles;
+int numParticles;
+float particleRadius;
+float blendStrength;
+float3 waterColor;
+float3 _Light;
+float3 _AmbientLight;
+
+struct Ray {
+    float3 origin;
+    float3 direction;
+};
+
+float SphereDistance(float3 eye, float3 centre, float radius) {
+    return distance(eye, centre) - radius;
+}
+
+Ray CreateRay(float3 origin, float3 direction) {
+    Ray ray;
+    ray.origin = origin;
+    ray.direction = direction;
+    return ray;
+}
+
+Ray CreateCameraRay(float2 uv) {
+    float3 origin = mul(_CameraToWorld, float4(0,0,0,1)).xyz;
+    float3 direction = mul(_CameraInverseProjection, float4(uv,0,1)).xyz;
+    direction = mul(_CameraToWorld, float4(direction,0)).xyz;
+    direction = normalize(direction);
+    return CreateRay(origin,direction);
+}
+
+// polynomial smooth min (k = 0.1);
+// from https://www.iquilezles.org/www/articles/smin/smin.htm
+float4 Blend( float a, float b, float3 colA, float3 colB, float k )
+{
+    float h = clamp( 0.5+0.5*(b-a)/k, 0.0, 1.0 );
+    float blendDst = lerp( b, a, h ) - k*h*(1.0-h);
+    float3 blendCol = lerp(colB,colA,h);
+    return float4(blendCol, blendDst);
+}
+
+float4 Combine(float dstA, float dstB, float3 colourA, float3 colourB) {
+    float dst = dstA;
+    float3 colour = colourA;
+    float4 blend = Blend(dstA,dstB,colourA,colourB, blendStrength);
+    dst = blend.w;
+    colour = blend.xyz;
+    return float4(colour,dst);
+}
+
+float GetShapeDistance(Particle particle, float3 eye) {
+   
+    return SphereDistance(eye, particle.position, particleRadius);
+    return maxDst;
+}
+
+
+float4 SceneInfo(float3 eye) {
+    float globalDst = maxDst;
+    float3 globalColour = waterColor;
+    
+    for (int i = 0; i < numParticles; i ++) {
+        Particle particle = particles[i];
+
+        float localDst = GetShapeDistance(particle,eye);
+        float3 localColour = waterColor;
+
+
+        float4 globalCombined = Combine(globalDst, localDst, globalColour, localColour);
+        globalColour = globalCombined.xyz;
+        globalDst = globalCombined.w;        
+    }
+
+    return float4(globalColour, globalDst);
+}
+
+float3 EstimateNormal(float3 p) {
+    float x = SceneInfo(float3(p.x+epsilon,p.y,p.z)).w - SceneInfo(float3(p.x-epsilon,p.y,p.z)).w;
+    float y = SceneInfo(float3(p.x,p.y+epsilon,p.z)).w - SceneInfo(float3(p.x,p.y-epsilon,p.z)).w;
+    float z = SceneInfo(float3(p.x,p.y,p.z+epsilon)).w - SceneInfo(float3(p.x,p.y,p.z-epsilon)).w;
+    return normalize(float3(x,y,z));
+}
+
+float CalculateShadow(Ray ray, float dstToShadePoint) {
+    float rayDst = 0;
+    int marchSteps = 0;
+    float shadowIntensity = .2;
+    float brightness = 1;
+
+    while (rayDst < dstToShadePoint) {
+        marchSteps ++;
+        float4 sceneInfo = SceneInfo(ray.origin);
+        float dst = sceneInfo.w;
+        
+        if (dst <= epsilon) {
+            return shadowIntensity;
+        }
+
+        brightness = min(brightness,dst*200);
+
+        ray.origin += ray.direction * dst;
+        rayDst += dst;
+    }
+    return shadowIntensity + (1-shadowIntensity) * brightness;
+}
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    uint width,height;
+    Destination.GetDimensions(width, height);
+
+    Destination[id.xy] = Source[id.xy];
+
+    float2 uv = id.xy / float2(width,height) * 2 - 1;
+    float rayDst = 0;
+
+    Ray ray = CreateCameraRay(uv);
+    int marchSteps = 0;
+
+    while (rayDst < maxDst) {
+        marchSteps ++;
+        float4 sceneInfo = SceneInfo(ray.origin);
+        float dst = sceneInfo.w;
+        
+        if (dst <= epsilon) {
+            float3 pointOnSurface = ray.origin + ray.direction * dst;
+            float3 normal = EstimateNormal(pointOnSurface - ray.direction * epsilon);
+            float3 lightDir = -_Light;
+            float lighting = saturate(saturate(dot(normal,lightDir)));
+            float3 col = sceneInfo.xyz;
+            
+            // Shadow
+            // float3 offsetPos = pointOnSurface + normal * shadowBias;
+            // float3 dirToLight = (positionLight)?normalize(_Light- offsetPos):-_Light;
+
+            // ray.origin = offsetPos;
+            // ray.direction = dirToLight;
+
+            // float dstToLight = (positionLight)?distance(offsetPos,_Light):maxDst;
+            // float shadow = CalculateShadow(ray, dstToLight);
+
+            Destination[id.xy] = float4(col * (lighting + _AmbientLight),1); //* lighting * shadow
+
+            break;
+        }
+
+        ray.origin += ray.direction * dst;
+        rayDst += dst;
+    }
+}

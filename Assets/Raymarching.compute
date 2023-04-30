@@ -149,7 +149,12 @@ void CSMain (uint3 id : SV_DispatchThreadID)
             float3 pointOnSurface = ray.origin + ray.direction * dst;
             float3 normal = EstimateNormal(pointOnSurface - ray.direction * epsilon);
             float3 lightDir = -_Light;
-            float lighting = saturate(saturate(dot(normal,lightDir)));
+            float lighting = saturate(saturate(dot(normal,lightDir))) ;
+
+            float3 reflectDir = reflect(-lightDir, normal);
+            float spec = pow(max(dot(ray.direction, reflectDir), 0.0), 32);
+            float3 specular = 0.7 * spec * float3(1,1,1);
+
             float3 col = sceneInfo.xyz;
             
             // Shadow
@@ -162,7 +167,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
             // float dstToLight = (positionLight)?distance(offsetPos,_Light):maxDst;
             // float shadow = CalculateShadow(ray, dstToLight);
 
-            Destination[id.xy] = float4(col * (lighting + _AmbientLight),1); //* lighting * shadow
+            Destination[id.xy] = float4(lerp(col, Source[id.xy], 0.8) * (specular + _AmbientLight + lighting * 0.01),1); //* lighting * shadow
 
             break;
         }

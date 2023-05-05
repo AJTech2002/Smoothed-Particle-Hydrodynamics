@@ -22,7 +22,7 @@ public class SPH : MonoBehaviour
     public bool wireframeSpheres = false;
 
     [Header("General")]
-    public Vector3 boxSize;
+    public Vector3Int boxSize;
     public Vector3 spawnBoxCenter;
     public Vector3 spawnBox;
     public float particleRadius;

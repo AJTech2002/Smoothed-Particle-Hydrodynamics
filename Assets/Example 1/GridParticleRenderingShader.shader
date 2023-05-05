@@ -1,10 +1,8 @@
-Shader "Instanced/GridTestParticleShader" {
+﻿Shader "Instanced/GridTestParticleShader" {
 	Properties{
 		_MainTex("Albedo (RGB)", 2D) = "white" {}
 		_Glossiness("Smoothness", Range(0,1)) = 0.5
 		_Metallic("Metallic", Range(0,1)) = 0.0
-        _Color("Color", Color) = (0.25, 0.5, 0.5, 1)
-		_DensityRange ("Density Range", Range(0,500)) = 1.0
 	}
 		SubShader{
 			Tags { "RenderType" = "Opaque" }
@@ -18,8 +16,6 @@ Shader "Instanced/GridTestParticleShader" {
 
 			sampler2D _MainTex;
 			float _size;
-            float3 _Color;
-			float _DensityRange;
 
 			struct Input {
 				float2 uv_MainTex;
@@ -27,13 +23,8 @@ Shader "Instanced/GridTestParticleShader" {
 
 			struct Particle
 			{
-                float pressure;
-                float density;
-                float3 currentForce;
-                float3 velocity;
 				float3 position;
-				float4 color;
-				
+				float4 color;	// TODO-SATJ: could probably get away with float3
 			};
 
 		#ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
@@ -60,13 +51,10 @@ Shader "Instanced/GridTestParticleShader" {
 			half _Metallic;
 
 			void surf(Input IN, inout SurfaceOutputStandard o) {
-
-				float4 col = float4(1,1,1,1);
-
+				float4 col = float4(1, 1, 1, 1);
 				#ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
 				col = _particlesBuffer[unity_InstanceID].color;
 				#endif
-
 				o.Albedo = col.rgb;
 				o.Metallic = _Metallic;
 				o.Smoothness = _Glossiness;

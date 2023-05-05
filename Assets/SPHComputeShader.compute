@@ -1,6 +1,9 @@
 #pragma kernel ComputeDensityPressure
 #pragma kernel ComputeForces
 #pragma kernel Integrate
+#pragma kernel ClearHashGrid
+#pragma kernel RecalculateHashGrid
+#pragma kernel BuildNeighbourList
 
 struct Particle
 {
@@ -9,6 +12,7 @@ struct Particle
     float3 currentForce;
     float3 velocity;
     float3 position;
+    float4 color;
 };
 
 RWStructuredBuffer<Particle> _particles;
@@ -36,6 +40,171 @@ float timestep = 1;
 
 float3 boxSize;
 
+
+
+// Grid Based Optimization
+RWStructuredBuffer<int> _neighbourList; // Stores all neighbours of a particle aligned at 'particleIndex * maximumParticlesPerCell * 8'
+RWStructuredBuffer<int> _neighbourTracker; // How many neighbours does each particle contain.
+RWStructuredBuffer<uint> _hashGrid; // aligned at 'particleIndex * maximumParticlesPerCell * 8' + _hashGridTracker[particleIndex]
+RWStructuredBuffer<uint> _hashGridTracker;   // How many particles at each cell.
+float CellSize;
+int maximumParticlesPerCell;
+
+
+int3 GetCell (float3 position) {
+    float3 topRight = boxSize / 2;
+    float3 bottomLeft = -boxSize/2;
+    // return int3(position.x/CellSize, position.y/CellSize, position.z/CellSize);
+    float3 perc = (position - bottomLeft)/(topRight-bottomLeft);
+    float3 cellPerc = float3 (CellSize/boxSize.x, CellSize/boxSize.y, CellSize/boxSize.z);
+
+    int3 cell = int3(round(perc.x/cellPerc.x),round(perc.y/cellPerc.y),round(perc.z/cellPerc.z));
+    return cell;
+}
+
+int Hash (int3 cell) {
+    return cell.x + boxSize.x * (cell.y + boxSize.y * cell.z);
+}
+
+[numthreads(100,1,1)]
+void ClearHashGrid (uint3 id : SV_DISPATCHTHREADID) {
+    //id.x represents the cell id, this is resetting the count
+    // this needs to be done in a separate kernel because all of it needs to be cleared before you recalculate it
+    _hashGridTracker[id.x] = 0;
+}
+
+[numthreads(100,1,1)]
+void RecalculateHashGrid(uint3 id : SV_DispatchThreadID)
+{
+    int prevCount = 0;
+    const int cellHash = Hash(GetCell(_particles[id.x].position)); //get index 
+
+    _particles[id.x].color = float4(0,0,0,1);
+
+    // out prevCount & increment counter
+    InterlockedAdd(_hashGridTracker[cellHash],1,prevCount); // Ensures multiple threads running at the same time don't mess up the count
+    
+    // prevCount = new _hashGridTracker[cellHash] value
+
+    // Don't need to take all the particles into account
+    if (prevCount >= maximumParticlesPerCell) {
+        return;
+    }
+
+    _hashGrid[cellHash*maximumParticlesPerCell+prevCount] = id.x;
+
+    // Hash Grid w/ Maximum Particles Per Cell (3)
+    // [1,2,3,4,5,6]
+    // Cell 1 has particles (1,2,3) within it
+    // Cell 2 has particles (4,5,6) within it
+
+}
+
+void GetNeighbourCells (int3 cell, float3 position, out int nearbyCells[8]) {
+    // 3d but only 8 neighbours needed
+    int3 nearbyCellIndices[8];
+    for (int i = 0; i < 8; i++) {
+        nearbyCellIndices[i] = cell; // Initialize with the current origin & modify x,y,z depending on need
+    }
+
+    float3 topRight = boxSize / 2;
+    float3 bottomLeft = -boxSize/2;
+
+    float3 cellPos = bottomLeft + float3((cell.x + 0.5) * CellSize, (cell.y + 0.5) * CellSize, (cell.z + 0.5) * CellSize);  
+
+    if (cellPos.x <= position.x) {
+        nearbyCellIndices[4].x += 1;
+        nearbyCellIndices[5].x += 1;
+        nearbyCellIndices[6].x += 1;
+        nearbyCellIndices[7].x += 1;
+    }
+    else {
+        nearbyCellIndices[4].x -= 1;
+        nearbyCellIndices[5].x -= 1;
+        nearbyCellIndices[6].x -= 1;
+        nearbyCellIndices[7].x -= 1;
+    }
+
+    if (cellPos.y <= position.y) {
+        nearbyCellIndices[2].y += 1;
+        nearbyCellIndices[3].y += 1;
+        nearbyCellIndices[6].y += 1;
+        nearbyCellIndices[7].y += 1;
+    }
+    else {
+        nearbyCellIndices[2].y -= 1;
+        nearbyCellIndices[3].y -= 1;
+        nearbyCellIndices[6].y -= 1;
+        nearbyCellIndices[7].y -= 1;
+    }
+
+    if (cellPos.z <= position.z) {
+        nearbyCellIndices[1].z += 1;
+        nearbyCellIndices[3].z += 1;
+        nearbyCellIndices[5].z += 1;
+        nearbyCellIndices[7].z += 1;
+    }
+    else {
+        nearbyCellIndices[1].z -= 1;
+        nearbyCellIndices[3].z -= 1;
+        nearbyCellIndices[5].z -= 1;
+        nearbyCellIndices[7].z -= 1;
+    }
+        //
+    int3 cellDimensions = int3((boxSize.x * 2) / CellSize, (boxSize.y*2) / CellSize, (boxSize.z*2) / CellSize);
+
+    for (int i2 = 0; i2 < 8; i2++) {
+        int3 cellGridPos = nearbyCellIndices[i2];
+        if (cellGridPos.x < 0 || cellGridPos.y < 0 || cellGridPos.z < 0 || cellGridPos.x >= cellDimensions.x || cellGridPos.y >= cellDimensions.y || cellGridPos.z >= cellDimensions.z) 
+        {
+            nearbyCells[i2] = -1;
+        }
+        else
+        {
+            nearbyCells[i2] = Hash(nearbyCellIndices[i2]);
+        }
+    }
+}
+
+[numthreads(100,1,1)]
+void BuildNeighbourList (uint3 id : SV_DISPATCHTHREADID) {
+    _neighbourTracker[id.x] = 0; // The count of the amount of neighbours for the given particle
+    const int3 cell = GetCell(_particles[id.x].position);
+    int cells[8];
+
+    GetNeighbourCells(cell, _particles[id.x].position, cells);
+
+    for (uint i = 0; i < 8; i++) {
+        // This neighbour doesn't exist for this particle
+        if (cells[i] == -1) {
+            // _neighbourTracker[id.x] = -1;
+            break;   
+        }
+
+        const uint numberOfParticlesInCell = min(_hashGridTracker[cells[i]], maximumParticlesPerCell);
+        // _neighbourTracker[id.x]  += numberOfParticlesInCell;
+        for (uint index = 0; index < numberOfParticlesInCell; index++) {
+            // Get index of particle in the neighbour's cell
+            const uint potentialNeighbour = _hashGrid[cells[i] * maximumParticlesPerCell + index];
+
+            if (potentialNeighbour == id.x) continue; // Found self
+
+            const float3 v = _particles[potentialNeighbour].position - _particles[id.x].position;
+            
+            // id.x * maximumParticlesPerCell * 8 marks the starting index of the list of neighbours for id.x
+            // maximumParticlesPerCell * 8 because there are 8 cell neighbours and each can have maximumParticlesPerCell particles
+            // + _neighbourTracker[id.x]++ starts at 0 and increments for every neighbour of id.x & also indexes the neighbour in this sublist
+            _neighbourList[id.x * maximumParticlesPerCell * 8 + _neighbourTracker[id.x]++] = potentialNeighbour;
+
+            if (id.x == 0) {
+                _particles[0].color = float4(0,1,0,1);
+                _particles[potentialNeighbour].color = float4(1,0,0,1);
+            }
+        }
+    }
+
+}
+
 float StdKernel(float distanceSquared)
 {
     // Doyub Kim
@@ -51,18 +220,16 @@ void ComputeDensityPressure (uint3 id: SV_DISPATCHTHREADID)
    float3 origin = _particles[id.x].position;
    float sum = 0;
    
-   for (int i = 0; i < particleLength; i++) {
-        float3 diff = origin - _particles[i].position;
+   for (int i = 0; i < _neighbourTracker[id.x]; i++) {
+        int neighbourIndex = _neighbourList[id.x * maximumParticlesPerCell * 8 + i];
+        float3 diff = origin - _particles[neighbourIndex].position;
         float distanceSquared = dot(diff, diff);
-        
-        if (radius2 > distanceSquared) {
-            float x = radius2 - distanceSquared;
-            sum += StdKernel(distanceSquared);
-        } 
+        sum += StdKernel(distanceSquared);
    }
    
    _particles[id.x].density = sum * particleMass + 0.000001f;
    _particles[id.x].pressure = gasConstant * (_particles[id.x].density - restDensity);
+ 
 }
 
 
@@ -90,27 +257,50 @@ float3 SpikyKernelGradient(float distance, float3 directionFromCenter)
 [numthreads(100,1,1)]
 void ComputeForces (uint3 id: SV_DISPATCHTHREADID)
 {
-    float3 origin = _particles[id.x].position;
-    float density2 = _particles[id.x].density * _particles[id.x].density; 
-    float3 pressure = float3(0,0,0);
-    float3 visc = float3(0,0,0);
+    // float3 origin = _particles[id.x].position;
+    // float density2 = _particles[id.x].density * _particles[id.x].density; 
+    // float3 pressure = float3(0,0,0);
+    // float3 visc = float3(0,0,0);
+    // float mass2 = particleMass * particleMass;
+
+    // for (int j = 0; j < _neighbourTracker[id.x]; j++) {
+        
+    //     const int i = _neighbourList[id.x * maximumParticlesPerCell * 8 + j];
+
+    //     if (origin.x == _particles[i].position.x && origin.y == _particles[i].position.y && origin.z == _particles[i].position.z) {
+    //         continue;
+    //     }
+
+    //     float dist = distance(_particles[i].position, origin);
+    //     if (dist < radius*2) {
+    //         float3 pressureGradientDirection = normalize(_particles[id.x].position-_particles[i].position);
+    //         pressure += mass2 * ( _particles[id.x].pressure / density2 + _particles[i].pressure / ( _particles[i].density * _particles[i].density ) ) * SpikyKernelGradient(dist, pressureGradientDirection);   // Kim
+    //         visc += viscosity * mass2 * ( _particles[i].velocity - _particles[id.x].velocity ) / _particles[i].density * SpikyKernelSecondDerivative(dist);
+    //     }
+    // }
+
+    // _particles[id.x].currentForce = float3(0,(-9.81 * particleMass), 0) - pressure + visc;
+
+    _particles[id.x].currentForce = float3(0, 0, 0);
+    const float particleDensity2 = _particles[id.x].density * _particles[id.x].density;
     float mass2 = particleMass * particleMass;
 
-    for (int i = 0; i < particleLength; i++) {
-        
-        if (origin.x == _particles[i].position.x && origin.y == _particles[i].position.y && origin.z == _particles[i].position.z) {
-            continue;
-        }
-
-        float dist = distance(_particles[i].position, origin);
-        if (dist < radius*2) {
-            float3 pressureGradientDirection = normalize(_particles[id.x].position-_particles[i].position);
-            pressure += mass2 * ( _particles[id.x].pressure / density2 + _particles[i].pressure / ( _particles[i].density * _particles[i].density ) ) * SpikyKernelGradient(dist, pressureGradientDirection);   // Kim
-            visc += viscosity * mass2 * ( _particles[i].velocity - _particles[id.x].velocity ) / _particles[i].density * SpikyKernelSecondDerivative(dist);
+    for (int j = 0; j < _neighbourTracker[id.x]; j++)
+    {
+        const int neighbourIndex = _neighbourList[id.x * maximumParticlesPerCell * 8 + j];
+        const float distance = length( _particles[id.x].position - _particles[neighbourIndex].position );
+        if (distance > 0.0f)
+        {
+            const float3 direction = ( _particles[id.x].position - _particles[neighbourIndex].position ) / distance;
+            // 7. Compute pressure gradient force (Doyub Kim page 136)
+            _particles[id.x].currentForce -= mass2 * ( _particles[id.x].pressure / particleDensity2 + _particles[neighbourIndex].pressure / ( _particles[neighbourIndex].density *  _particles[neighbourIndex].density ) ) * SpikyKernelGradient(distance, direction);   // Kim
+            // 8. Compute the viscosity force
+            _particles[id.x].currentForce += viscosity * mass2 * ( _particles[neighbourIndex].velocity - _particles[id.x].velocity) / _particles[neighbourIndex].density * SpikyKernelSecondDerivative(distance);    // Kim
         }
     }
-
-    _particles[id.x].currentForce = float3(0,(-9.81 * particleMass), 0) - pressure + visc;
+    
+    // Gravity
+    _particles[id.x].currentForce += float3(0,(-9.81 * particleMass), 0);
 
     // + pressure + visc/_particles[id.x].density;
 }

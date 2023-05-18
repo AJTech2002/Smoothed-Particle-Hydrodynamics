@@ -52,17 +52,24 @@ void ComputeDensityPressure (uint3 id: SV_DISPATCHTHREADID)
    float sum = 0;
    
    for (int i = 0; i < particleLength; i++) {
+    
+        // if (origin.x == _particles[i].position.x && origin.y == _particles[i].position.y && origin.z == _particles[i].position.z) {
+        //     continue;
+        // }
+
         float3 diff = origin - _particles[i].position;
         float distanceSquared = dot(diff, diff);
         
-        if (radius2 > distanceSquared) {
-            float x = radius2 - distanceSquared;
-            sum += StdKernel(distanceSquared);
+        if (radius2*0.004 > distanceSquared*0.004) {
+            float x = (radius2*0.004) - (distanceSquared*0.004);
+            sum += StdKernel(distanceSquared*0.004);
         } 
    }
    
    _particles[id.x].density = sum * particleMass + 0.000001f;
    _particles[id.x].pressure = gasConstant * (_particles[id.x].density - restDensity);
+
+   if (_particles[id.x].pressure <= 0) _particles[id.x].pressure = 0;
 }
 
 
@@ -86,6 +93,9 @@ float3 SpikyKernelGradient(float distance, float3 directionFromCenter)
 {
     return SpikyKernelFirstDerivative(distance) * directionFromCenter;
 }
+
+float3 spherePos;
+float sphereRadius;
 
 [numthreads(100,1,1)]
 void ComputeForces (uint3 id: SV_DISPATCHTHREADID)
@@ -111,6 +121,14 @@ void ComputeForces (uint3 id: SV_DISPATCHTHREADID)
     }
 
     _particles[id.x].currentForce = float3(0,(-9.81 * particleMass), 0) - pressure + visc;
+
+    // Handle Collision
+
+    float3 colDir = _particles[id.x].position-spherePos;
+    if (length(colDir) < sphereRadius) {
+        float mag = sphereRadius/length(colDir);
+        _particles[id.x].currentForce += colDir*300*mag;
+    }
 
     // + pressure + visc/_particles[id.x].density;
 }

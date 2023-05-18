@@ -28,6 +28,9 @@ public class FluidRayMarching : MonoBehaviour
             if (target != null) {
                 target.Release ();
             }
+            
+            cam.depthTextureMode = DepthTextureMode.Depth;
+
             target = new RenderTexture (cam.pixelWidth, cam.pixelHeight, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
             target.enableRandomWrite = true;
             target.Create ();
@@ -58,6 +61,7 @@ public class FluidRayMarching : MonoBehaviour
         raymarching.SetFloat("blendStrength", blendStrength);
         raymarching.SetVector("waterColor", waterColor);
         raymarching.SetVector("_AmbientLight", ambientLight);
+        raymarching.SetTextureFromGlobal(0, "_DepthTexture", "_CameraDepthTexture");
         render = true;
     }
 
@@ -76,7 +80,7 @@ public class FluidRayMarching : MonoBehaviour
 
             raymarching.SetTexture (0, "Source", source);
             raymarching.SetTexture (0, "Destination", target);
-
+            raymarching.SetVector("_CameraPos", cam.transform.position);
             raymarching.SetMatrix ("_CameraToWorld", cam.cameraToWorldMatrix);
             raymarching.SetMatrix ("_CameraInverseProjection", cam.projectionMatrix.inverse);
 

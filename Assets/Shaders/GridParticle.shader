@@ -4,7 +4,7 @@ Shader "Instanced/GridTestParticleShader" {
 		_Glossiness("Smoothness", Range(0,1)) = 0.5
 		_Metallic("Metallic", Range(0,1)) = 0.0
         _Color("Color", Color) = (0.25, 0.5, 0.5, 1)
-		_DensityRange ("Density Range", Range(0,500)) = 1.0
+		_DensityRange ("Density Range", Range(0,500000)) = 1.0
 	}
 		SubShader{
 			Tags { "RenderType" = "Opaque" }
@@ -59,12 +59,18 @@ Shader "Instanced/GridTestParticleShader" {
 			half _Metallic;
 
 			void surf(Input IN, inout SurfaceOutputStandard o) {
-				float4 col = float4(1, 1, 1, 1);
+
+				#ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
+					float dens = _particlesBuffer[unity_InstanceID].pressure;
+					float4 col = float4(dens/_DensityRange, 0,0, 1);
 				
-				o.Albedo = col.rgb;
-				o.Metallic = _Metallic;
-				o.Smoothness = _Glossiness;
-				o.Alpha = col.a;
+					o.Albedo = col.rgb;
+					o.Metallic = _Metallic;
+					o.Smoothness = _Glossiness;
+					o.Alpha = col.a;
+				#endif
+
+				
 			}
 			ENDCG
 		}

@@ -14,28 +14,33 @@ public struct Particle
 
 public class SPH_Compute : MonoBehaviour
 {
-
-  
     [Header("General")]
     public bool showSpheres = false;
-    // public int numToSpawn = 400;
-    public Vector3Int numToSpawn;
-    public Vector3 boxSize;
-    public Vector3 spawnBoxCenter;
-    public Vector3 spawnBox;
-    public float particleRadius;
-    public Vector3 gravity = new Vector3(0, -9.81f, 0);
+    public Vector3Int numToSpawn = new Vector3Int(10,10,10);
+    public Vector3 boxSize = new Vector3(4,10,3);
+    public Vector3 spawnBoxCenter = new Vector3(0,3,0);
+    public Vector3 spawnBox = new Vector3(4,2,1.5f);
+    public float particleRadius = 0.1f;
+
+    [Header("Particle Rendering")]
+    public Mesh particleMesh;
+    public float particleRenderSize = 16f;
+    public Material material;
+
+     private static readonly int SizeProperty = Shader.PropertyToID("_size");
+    private static readonly int ParticlesBufferProperty = Shader.PropertyToID("_particlesBuffer");
 
     [Header("Fluid Constants")]
-    public float boundDamping = -0.5f;
-    public float viscosity = 200f;
-    public float particleMass = 2.5f;
-    public float gasConstant = 2000.0f; // Includes temp
-    public float restingDensity = 300.0f; // Water
-
+    public float boundDamping = -0.3f;
+    public float viscosity = -0.003f;
+    public float particleMass = 1f;
+    public float gasConstant = 2f; 
+    public float restingDensity = 1f; 
 
     [Header("Time")]
-    public float timeScale;
+    public float timestep = 0.0001f;
+    public Transform sphere;
+
 
     [Header("Compute")]
     public ComputeShader shader;
@@ -44,15 +49,7 @@ public class SPH_Compute : MonoBehaviour
     private ComputeBuffer _argsBuffer;
     public ComputeBuffer _particlesBuffer;
 
-    [Header("Particle Rendering")]
-    public Mesh particleMesh;
-    public float particleRenderSize = 40f;
-    public Material material;
-
     private int num = 0;
-
-    private static readonly int SizeProperty = Shader.PropertyToID("_size");
-    private static readonly int ParticlesBufferProperty = Shader.PropertyToID("_particlesBuffer");
 
     private void Awake()
     {
@@ -117,29 +114,7 @@ public class SPH_Compute : MonoBehaviour
     private void SpawnParticlesInBox()
     {
         Vector3 spawnTopLeft = spawnBoxCenter - spawnBox / 2;
-        int xIterations = Mathf.RoundToInt(spawnBox.x / (particleRadius * 2));
-        int yIterations = Mathf.RoundToInt(spawnBox.y / (particleRadius * 2));
-        int zIterations = Mathf.RoundToInt(spawnBox.z / (particleRadius * 2));
-
-        // num = xIterations * yIterations * zIterations;
-
         List<Particle> _particles = new List<Particle>();
-
-        // for (int x = 1; x < xIterations; x++) {
-        //     for (int y = 1; y < yIterations; y++) {
-        //         for (int z = 1; z < zIterations; z++) {
-
-        //             Vector3 spawnPosition = spawnTopLeft + new Vector3(x * particleRadius * 2, y * particleRadius * 2, z * particleRadius * 2);
-
-        //             Particle p = new Particle
-        //             {
-        //                 position = spawnPosition
-        //             };
-
-        //             _particles.Add(p);
-        //         }
-        //     }
-        // }
 
         for (int x = 0; x < numToSpawn.x; x++)
         {
@@ -159,18 +134,16 @@ public class SPH_Compute : MonoBehaviour
         }
 
         num = _particles.Count;
-
         particles = _particles.ToArray();
-
     }
-
-    public float timestep = 0.07f;
 
     private void FixedUpdate()
     {
 
         shader.SetVector("boxSize", boxSize);
         shader.SetFloat("timestep", timestep);
+        shader.SetVector("spherePos", sphere.transform.position);
+        shader.SetFloat("sphereRadius", sphere.transform.localScale.x/2);
 
         shader.Dispatch(densityPressureKernel, num / 100, 1, 1);
         shader.Dispatch(computeForceKernel, num / 100, 1, 1);

@@ -2,6 +2,7 @@
 
 Texture2D<float4> Source;
 RWTexture2D<float4> Destination;
+Texture2D<float4> _DepthTexture;
 
 float4x4 _CameraToWorld;
 float4x4 _CameraInverseProjection;
@@ -26,6 +27,7 @@ float blendStrength;
 float3 waterColor;
 float3 _Light;
 float3 _AmbientLight;
+float3 _CameraPos;
 
 struct Ray {
     float3 origin;
@@ -126,6 +128,26 @@ float CalculateShadow(Ray ray, float dstToShadePoint) {
     return shadowIntensity + (1-shadowIntensity) * brightness;
 }
 
+float LinearEyeDepth( float rawdepth )
+{
+    float _NearClip = 0.3;
+    float FarClip = 1000;
+    float x, y, z, w;
+    #if SHADER_API_GLES3 // insted of UNITY_REVERSED_Z
+        x = -1.0 + _NearClip/ FarClip;
+        y = 1;
+        z = x / _NearClip;
+        w = 1 / _NearClip;
+    #else
+        x = 1.0 - _NearClip/ FarClip;
+        y = _NearClip / FarClip;
+        z = x / _NearClip;
+        w = y / _NearClip;
+    #endif
+    
+    return 1.0 / (z * rawdepth + w);
+}
+
 [numthreads(8,8,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
@@ -140,10 +162,19 @@ void CSMain (uint3 id : SV_DispatchThreadID)
     Ray ray = CreateCameraRay(uv);
     int marchSteps = 0;
 
+    float depth = LinearEyeDepth(_DepthTexture[id.xy]);
+
+    
+
     while (rayDst < maxDst) {
         marchSteps ++;
         float4 sceneInfo = SceneInfo(ray.origin);
         float dst = sceneInfo.w;
+
+        if (rayDst >= depth) {
+            Destination[id.xy] = Source[id.xy];
+            break;
+        }
         
         if (dst <= epsilon) {
             float3 pointOnSurface = ray.origin + ray.direction * dst;
@@ -156,18 +187,26 @@ void CSMain (uint3 id : SV_DispatchThreadID)
             float3 specular = 0.7 * spec * float3(1,1,1);
 
             float3 col = sceneInfo.xyz;
+
+            float3 t1 = cross(normal, float3(0,0,1));
+            float3 t2 = cross(normal, float3(0,1,0));
+            float3 tangent = float3(0,0,0);
+            if (length(t1) > length(t2)) {
+                tangent = normalize(t1);
+            }
+            else {
+                tangent = normalize(t2);
+            }
+
+            float3x3 tangentMatrix = float3x3(tangent,cross(tangent, normal),normal);
+
+            float3 viewDir = normalize(pointOnSurface-_CameraPos);
+
+            float3 refracted = mul(tangentMatrix, refract(viewDir, normal,1));
             
-            // Shadow
-            // float3 offsetPos = pointOnSurface + normal * shadowBias;
-            // float3 dirToLight = (positionLight)?normalize(_Light- offsetPos):-_Light;
 
-            // ray.origin = offsetPos;
-            // ray.direction = dirToLight;
-
-            // float dstToLight = (positionLight)?distance(offsetPos,_Light):maxDst;
-            // float shadow = CalculateShadow(ray, dstToLight);
-
-            Destination[id.xy] = float4(lerp(col, Source[id.xy], 0.8) * (specular + _AmbientLight + lighting * 0.01),1); //* lighting * shadow
+            Destination[id.xy] = float4(lerp(col, Source[id.xy+(refracted.xy)], 0.8) * (specular + _AmbientLight + lighting * 0.01),1);
+           
 
             break;
         }

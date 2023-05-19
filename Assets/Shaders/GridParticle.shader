@@ -59,18 +59,8 @@ Shader "Instanced/GridTestParticleShader" {
 			half _Metallic;
 
 			void surf(Input IN, inout SurfaceOutputStandard o) {
-
-				#ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
-					float dens = _particlesBuffer[unity_InstanceID].pressure;
-					float4 col = float4(dens/_DensityRange, 0,0, 1);
-				
-					o.Albedo = col.rgb;
-					o.Metallic = _Metallic;
-					o.Smoothness = _Glossiness;
-					o.Alpha = col.a;
-				#endif
-
-				
+				float4 col = float4(_Color, 1.0);
+				o.Albedo = col.rgb;
 			}
 			ENDCG
 		}

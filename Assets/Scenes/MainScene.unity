@@ -132,7 +132,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 553318309}
-  - component: {fileID: 553318310}
   m_Layer: 0
   m_Name: SPH Simulator
   m_TagString: Untagged
@@ -155,36 +154,6 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 2
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &553318310
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 553318307}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 586d6dae84a23224a9787be16c0d6447, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  showSpheres: 1
-  numToSpawn: {x: 10, y: 10, z: 5}
-  boxSize: {x: 3.81, y: 10, z: 2.85}
-  spawnBoxCenter: {x: 0, y: 3, z: 0}
-  spawnBox: {x: 4.18, y: 2, z: 1.55}
-  particleRadius: 0.1
-  particleMesh: {fileID: 2540817853737639666, guid: d2bcb9b63a067d643b56910fd449b51b, type: 3}
-  particleRenderSize: 16
-  material: {fileID: 2100000, guid: 59f711850adb03c4e8c278abd3f506ca, type: 2}
-  boundDamping: -0.3
-  viscosity: -0.003
-  particleMass: 1
-  gasConstant: 2
-  restingDensity: 1
-  timestep: 0.0001
-  sphere: {fileID: 1168886303}
-  shader: {fileID: 7200000, guid: be65b6707ee57ca4683e0fe2fa13303c, type: 3}
-  particles: []
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0
@@ -376,14 +345,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7182cac652d7f6641b7c75b05bb7d010, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  raymarching: {fileID: 7200000, guid: c199b7ab9e896e744b631741203be3cc, type: 3}
-  cam: {fileID: 963194227}
-  sph: {fileID: 553318310}
-  viewRadius: 0.02
-  blendStrength: 0.5
-  waterColor: {r: 0.48584908, g: 0.8356517, b: 1, a: 1}
-  ambientLight: {r: 0.8066038, g: 1, b: 1, a: 0}
-  lightSource: {fileID: 705507994}
 --- !u!1 &989571877
 GameObject:
   m_ObjectHideFlags: 0
@@ -474,8 +435,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 989571877}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.01, y: -5.91, z: 0.02}
-  m_LocalScale: {x: -5.4828067, y: 1.7403334, z: 5.829771}
+  m_LocalPosition: {x: -0.01, y: -5.24, z: 0.02}
+  m_LocalScale: {x: -7.712116, y: 1.0738436, z: 8.200156}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -571,7 +532,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1168886299}
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -0.13, y: -4.49, z: 3.86}
+  m_LocalPosition: {x: -2.76, y: -4.24, z: 3.14}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

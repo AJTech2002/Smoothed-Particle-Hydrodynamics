@@ -132,6 +132,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 553318309}
+  - component: {fileID: 553318310}
   m_Layer: 0
   m_Name: SPH Simulator
   m_TagString: Untagged
@@ -154,6 +155,36 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 2
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &553318310
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 553318307}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe05b066404b90d4fa9dbc77fc980693, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  collisionSphere: {fileID: 1168886303}
+  showSpheres: 0
+  numToSpawn: {x: 10, y: 10, z: 10}
+  boxSize: {x: 4, y: 10, z: 3}
+  spawnCenter: {x: -1.84, y: 3.85, z: -0.66}
+  particleRadius: 0.1
+  spawnJitter: 0.2
+  particleMesh: {fileID: 2540817853737639666, guid: d2bcb9b63a067d643b56910fd449b51b, type: 3}
+  particleRenderSize: 8
+  material: {fileID: 2100000, guid: ea5407f7bde59d6498a95296ae104fd0, type: 2}
+  shader: {fileID: 7200000, guid: 6058568d2927c2043a5888b941f1c8a2, type: 3}
+  particles: []
+  boundDamping: -0.3
+  viscosity: -0.01
+  particleMass: 1
+  gasConstant: 2
+  restingDensity: 1
+  timestep: 0.0001
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0
@@ -241,7 +272,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 705507993}
   m_LocalRotation: {x: 0.40821788, y: -0.23456968, z: 0.10938163, w: 0.8754261}
-  m_LocalPosition: {x: 0, y: 3, z: 0}
+  m_LocalPosition: {x: 10.55, y: 6.94, z: 2.27}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -300,7 +331,7 @@ Camera:
     height: 1
   near clip plane: 0.3
   far clip plane: 1000
-  field of view: 46.8
+  field of view: 28.3
   orthographic: 0
   orthographic size: 8.19
   m_Depth: -1
@@ -326,7 +357,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 963194225}
   m_LocalRotation: {x: 0.28160405, y: -0.34516296, z: 0.10938667, w: 0.8885923}
-  m_LocalPosition: {x: 10.098293, y: 9.07, z: -10.170435}
+  m_LocalPosition: {x: 10.098293, y: 6.17, z: -10.170435}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -342,9 +373,17 @@ MonoBehaviour:
   m_GameObject: {fileID: 963194225}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7182cac652d7f6641b7c75b05bb7d010, type: 3}
+  m_Script: {fileID: 11500000, guid: 634600b3a4bbe9c438d7fa1bb527d2a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  raymarching: {fileID: 7200000, guid: c199b7ab9e896e744b631741203be3cc, type: 3}
+  cam: {fileID: 963194227}
+  sph: {fileID: 553318310}
+  viewRadius: 0.01
+  blendStrength: 0.5
+  waterColor: {r: 0.5254539, g: 0.9056604, b: 0.8866689, a: 0.56078434}
+  ambientLight: {r: 0.4816661, g: 0.8301887, b: 0.8032171, a: 0.6862745}
+  lightSource: {fileID: 705507994}
 --- !u!1 &989571877
 GameObject:
   m_ObjectHideFlags: 0
@@ -435,7 +474,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 989571877}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.01, y: -5.24, z: 0.02}
+  m_LocalPosition: {x: -0.01, y: -5.54, z: 0.02}
   m_LocalScale: {x: -7.712116, y: 1.0738436, z: 8.200156}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -532,8 +571,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1168886299}
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -2.76, y: -4.24, z: 3.14}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalPosition: {x: 0.058, y: -4.976, z: 0.126}
+  m_LocalScale: {x: 3.2365465, y: 3.2365465, z: 3.2365465}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}

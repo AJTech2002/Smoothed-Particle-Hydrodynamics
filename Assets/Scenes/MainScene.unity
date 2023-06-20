@@ -380,8 +380,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   collisionSphere: {fileID: 1168886303}
   showSpheres: 1
-  numToSpawn: {x: 16, y: 4, z: 8}
-  boxSize: {x: 4.8, y: 10, z: 1.84}
+  numToSpawn: {x: 32, y: 32, z: 32}
+  boxSize: {x: 6.87, y: 10, z: 7}
   spawnCenter: {x: 0.07, y: -3.63, z: -0.68}
   particleRadius: 0.1
   spawnJitter: 0.2
@@ -390,12 +390,12 @@ MonoBehaviour:
   material: {fileID: 2100000, guid: ea5407f7bde59d6498a95296ae104fd0, type: 2}
   shader: {fileID: 7200000, guid: 6058568d2927c2043a5888b941f1c8a2, type: 3}
   particles: []
-  boundDamping: -0.5
-  viscosity: -0.01
-  particleMass: 103.04
+  boundDamping: -0.3
+  viscosity: -0.05
+  particleMass: 1
   gasConstant: 0.03
   restingDensity: 1
-  timestep: 0.0001
+  timestep: 0.0008
   particleIndices: 
   particleCellIndices: 
   cellOffsets: 

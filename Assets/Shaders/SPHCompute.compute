@@ -147,10 +147,12 @@ float StdKernel (float distanceSquared) {
 [numthreads(256,1,1)]
 void ComputeDensityPressure (uint3 id: SV_DISPATCHTHREADID) {
 
-    float3 origin = _particles[id.x].position;
+    uint particleIndex = particleIndices[id.x];
+
+    float3 origin = _particles[particleIndex].position;
     float sum = 0;
 
-    int3 cellIndex = GetCell(_particles[id.x].position);
+    int3 cellIndex = GetCell(_particles[particleIndex].position);
     
     for(int i = -1; i <= 1; ++i)
     {
@@ -194,9 +196,10 @@ void ComputeDensityPressure (uint3 id: SV_DISPATCHTHREADID) {
     }
     
 
-    _particles[id.x].density = sum * particleMass + 0.000001f;
-    _particles[id.x].pressure = gasConstant * (_particles[id.x].density - restDensity);
-
+    _particles[particleIndex].density = sum * particleMass + 0.000001f;
+    _particles[particleIndex].pressure = gasConstant * (_particles[particleIndex].density - restDensity);
+    _particles[particleIndex].visualise = float3(_particles[particleIndex].pressure/100, _particles[particleIndex].pressure/100, _particles[particleIndex].pressure/100);
+    
 }
 
 // Smoothing Functions for Compute Forces
@@ -267,7 +270,7 @@ void ComputeForces (uint3 id : SV_DISPATCHTHREADID) {
 
 
                     float dist = distance(particleB.position, origin);
-                    if (dist < radius ) {
+                    if (dist < radius * 2 ) {
                         
                         if (particleIndex == 0) {
                             _particles[particleIndexB].visualise = float3(0.0, 1.0, 0.0);
@@ -280,7 +283,7 @@ void ComputeForces (uint3 id : SV_DISPATCHTHREADID) {
                         float3 _viscosityContribution = viscosity * mass2 * (particleB.velocity - _particles[particleIndex].velocity)/particleB.density;
                         _viscosityContribution *= SpikyKernelSecondDerivative(dist);
 
-                        pressure += _pressureContribution;
+                        pressure += _pressureContribution*15;
                         visc += _viscosityContribution; 
                     }
 
@@ -315,10 +318,10 @@ void ComputeForces (uint3 id : SV_DISPATCHTHREADID) {
 
     // }
 
-    _particles[id.x].currentForce = float3(0,-9.81*particleMass,0) - pressure + visc;
+    _particles[particleIndex].currentForce = float3(0,-9.81*particleMass,0) - pressure + visc;
 
-    float3 colDir = _particles[id.x].position - spherePos;
+    float3 colDir = _particles[particleIndex].position - spherePos;
     if (length(colDir) < sphereRadius) {
-        _particles[id.x].currentForce += colDir * 300;
+        _particles[particleIndex].currentForce += colDir * 300;
     }
 }

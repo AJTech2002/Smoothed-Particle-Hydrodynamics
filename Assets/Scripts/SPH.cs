@@ -2,15 +2,17 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using System.Runtime.InteropServices;
-
+using MergeSort;
 [System.Serializable]
-[StructLayout(LayoutKind.Sequential, Size=44)]
+[StructLayout(LayoutKind.Sequential, Size=56)]
 public struct Particle {
     public float pressure; // 4
     public float density; // 8
     public Vector3 currentForce; // 20
     public Vector3 velocity; // 32
-    public Vector3 position; // 44 total bytes
+    public Vector3 position; // 44
+
+    public Vector3 visualise; // 56
 }
 
 public class SPH : MonoBehaviour
@@ -49,9 +51,21 @@ public class SPH : MonoBehaviour
     // Private Variables
     private ComputeBuffer _argsBuffer;
     public ComputeBuffer _particlesBuffer;
+    public ComputeBuffer _particleIndices;
+    public ComputeBuffer _particleCellIndices;
+
+    public ComputeBuffer _cellOffsets;
+
     private int integrateKernel;
     private int computeForceKernel;
     private int densityPressureKernel;
+    private int hashParticlesKernel;
+    private int clearCellOffsetsKernel;
+    
+    private int calculateCellOffsetsKernel;
+
+
+    private BitonicMergeSort mergeSort;
 
     private void OnDrawGizmos() {
 
@@ -65,8 +79,17 @@ public class SPH : MonoBehaviour
 
     }
 
-    private void Awake() {
+    public uint[] particleIndices;
+    public uint[] particleCellIndices;
 
+    public uint[] cellOffsets;
+
+    public ComputeShader bitonicSortShader;
+
+    private void Awake() { 
+
+        mergeSort = new BitonicMergeSort(bitonicSortShader);
+       
         SpawnParticlesInBox(); // Spawn Particles
 
         // Setup Args for Instanced Particle Rendering
@@ -82,10 +105,28 @@ public class SPH : MonoBehaviour
         _argsBuffer.SetData(args);
 
         // Setup Particle Buffer
-        _particlesBuffer = new ComputeBuffer(totalParticles,44);
+        _particlesBuffer = new ComputeBuffer(totalParticles,56);
         _particlesBuffer.SetData(particles);
 
+        _particleCellIndices = new ComputeBuffer(totalParticles, 4);
+        _particleIndices = new ComputeBuffer(totalParticles, 4);
+
+        _cellOffsets = new ComputeBuffer(totalParticles, 4);
+        cellOffsets = new uint[totalParticles];
+
+        
+        particleCellIndices = new uint[totalParticles];
+
+        particleIndices = new uint[totalParticles];
+        for (int i = 0; i < particleIndices.Length; i++) particleIndices[i] = (uint)i; 
+        
+        _particleIndices.SetData(particleIndices);
+
+        mergeSort.Init(_particleIndices);
+
         SetupComputeBuffers();
+
+        shader.Dispatch(integrateKernel, totalParticles / 256, 1, 1); // 3. Use forces to move particles
 
     }
 
@@ -94,7 +135,10 @@ public class SPH : MonoBehaviour
         integrateKernel = shader.FindKernel("Integrate");
         computeForceKernel = shader.FindKernel("ComputeForces");
         densityPressureKernel = shader.FindKernel("ComputeDensityPressure");
-
+        hashParticlesKernel = shader.FindKernel("HashParticles");
+        clearCellOffsetsKernel = shader.FindKernel("ClearCellOffsets");
+        calculateCellOffsetsKernel = shader.FindKernel("CalculateCellOffsets");
+        
         shader.SetInt("particleLength", totalParticles);
         shader.SetFloat("particleMass", particleMass);
         shader.SetFloat("viscosity", viscosity);
@@ -103,6 +147,7 @@ public class SPH : MonoBehaviour
         shader.SetFloat("boundDamping", boundDamping);
         shader.SetFloat("pi", Mathf.PI);
         shader.SetVector("boxSize", boxSize);
+        
 
         shader.SetFloat("radius", particleRadius);
         shader.SetFloat("radius2", particleRadius * particleRadius);
@@ -111,9 +156,26 @@ public class SPH : MonoBehaviour
         shader.SetFloat("radius5", particleRadius * particleRadius * particleRadius * particleRadius * particleRadius);
 
         shader.SetBuffer(integrateKernel, "_particles", _particlesBuffer);
-        shader.SetBuffer(computeForceKernel, "_particles", _particlesBuffer);
-        shader.SetBuffer(densityPressureKernel, "_particles", _particlesBuffer);
 
+        shader.SetBuffer(computeForceKernel, "_particles", _particlesBuffer);
+        shader.SetBuffer(computeForceKernel, "particleIndices", _particleIndices);
+        shader.SetBuffer(computeForceKernel, "particleCellIndices", _particleCellIndices);
+        shader.SetBuffer(computeForceKernel, "cellOffsets", _cellOffsets); 
+
+        shader.SetBuffer(densityPressureKernel, "_particles", _particlesBuffer);
+        shader.SetBuffer(densityPressureKernel, "particleIndices", _particleIndices);
+        shader.SetBuffer(densityPressureKernel, "particleCellIndices", _particleCellIndices);
+        shader.SetBuffer(densityPressureKernel, "cellOffsets", _cellOffsets); 
+        
+        shader.SetBuffer(hashParticlesKernel, "particleIndices", _particleIndices);
+        shader.SetBuffer(hashParticlesKernel, "particleCellIndices", _particleCellIndices);
+        shader.SetBuffer(hashParticlesKernel, "_particles", _particlesBuffer);  
+
+        shader.SetBuffer(clearCellOffsetsKernel, "cellOffsets", _cellOffsets); 
+
+        shader.SetBuffer(calculateCellOffsetsKernel, "cellOffsets", _cellOffsets);
+        shader.SetBuffer(calculateCellOffsetsKernel, "particleIndices", _particleIndices);
+        shader.SetBuffer(calculateCellOffsetsKernel, "particleCellIndices", _particleCellIndices);
     }
 
 
@@ -124,11 +186,22 @@ public class SPH : MonoBehaviour
         shader.SetVector("spherePos", collisionSphere.transform.position);
         shader.SetFloat("sphereRadius", collisionSphere.transform.localScale.x/2);
 
-        // Total Particles has to be divisible by 100 
-        shader.Dispatch(densityPressureKernel, totalParticles / 100, 1, 1); // 1. Compute Density/Pressure for each particle
-        shader.Dispatch(computeForceKernel, totalParticles / 100, 1, 1); // 2. Use Density/Pressure to calculate forces
-        shader.Dispatch(integrateKernel, totalParticles / 100, 1, 1); // 3. Use forces to move particles
+
+        shader.Dispatch(clearCellOffsetsKernel, totalParticles / 256, 1, 1); // 0. Hash each particle
+
+        shader.Dispatch(hashParticlesKernel, totalParticles / 256, 1, 1); // 0. Hash each particle
+
+        mergeSort.SortInt(_particleIndices,_particleCellIndices);
+
+        shader.Dispatch(calculateCellOffsetsKernel, totalParticles/256,1,1);
+
+        // shader.Dispatch(sortParticlesKernel, totalParticles / 256, 1, 1);
+        shader.Dispatch(densityPressureKernel, totalParticles / 256, 1, 1); // 1. Compute Density/Pressure for each particle
+        shader.Dispatch(computeForceKernel, totalParticles / 256, 1, 1); // 2. Use Density/Pressure to calculate forces
+        shader.Dispatch(integrateKernel, totalParticles / 256, 1, 1); // 3. Use forces to move particles
+       
     }
+    
 
 
     private void SpawnParticlesInBox() {
@@ -162,6 +235,22 @@ public class SPH : MonoBehaviour
     private static readonly int SizeProperty = Shader.PropertyToID("_size");
     private static readonly int ParticlesBufferProperty = Shader.PropertyToID("_particlesBuffer");
 
+    Vector3Int GetCell(Vector3 position)
+    {
+        Vector3 halfS = boxSize/2;
+        return new Vector3Int(Mathf.FloorToInt((position.x+halfS.x) / particleRadius), Mathf.FloorToInt((position.y+halfS.y) / particleRadius), Mathf.FloorToInt((position.z+halfS.z) / particleRadius));
+    }
+
+    long GetFlatCellIndex(Vector3Int cellIndex)
+    {
+        const long p1 = 73856093; // some large primes
+        const long p2 = 19349663;
+        const long p3 = 83492791;
+        long n = p1 * cellIndex.x ^ p2*cellIndex.y ^ p3*cellIndex.z;
+        n %= totalParticles;
+        return n;
+    }
+
     private void Update() {
 
         // Render the particles
@@ -178,7 +267,82 @@ public class SPH : MonoBehaviour
                 castShadows: UnityEngine.Rendering.ShadowCastingMode.Off
             );
 
+        if (Input.GetKeyDown(KeyCode.Space)) {
 
+            shader.Dispatch(clearCellOffsetsKernel, totalParticles / 256, 1, 1); // 0. Hash each particle
+
+             // Total Particles has to be divisible by 100 
+            shader.Dispatch(hashParticlesKernel, totalParticles / 256, 1, 1); // 0. Hash each particle
+
+            mergeSort.SortInt(_particleIndices,_particleCellIndices);
+
+            shader.Dispatch(calculateCellOffsetsKernel, totalParticles/256,1,1);
+
+            // shader.Dispatch(sortParticlesKernel, totalParticles / 256, 1, 1);
+            // shader.Dispatch(densityPressureKernel, totalParticles / 256, 1, 1); // 1. Compute Density/Pressure for each particle
+            // shader.Dispatch(computeForceKernel, totalParticles / 256, 1, 1); // 2. Use Density/Pressure to calculate forces
+            // shader.Dispatch(integrateKernel, totalParticles / 256, 1, 1); // 3. Use forces to move particles
+
+            // VISUALISE DATA STRUCTURES 
+            _particlesBuffer.GetData(particles);
+            _particleIndices.GetData(particleIndices);
+            _particleCellIndices.GetData(particleCellIndices);
+            _cellOffsets.GetData(cellOffsets);
+
+
+
+            Vector3Int cellIndex = GetCell(particles[0].position);
+
+            particles[0].visualise = new Vector3(1.0f, 0.0f, 0.0f);
+
+            Debug.Log("Stored Cell Index of 0 : " + particleCellIndices[0]);
+            Debug.Log("Calculated CEll Index of 0 :" + GetFlatCellIndex(cellIndex));
+             Debug.Log("Calculated CEll :" + GetCell(cellIndex));
+
+            for(int i = -1; i <= 1; ++i)
+            {
+                for(int j = -1; j <= 1; ++j)
+                {
+                    for(int k = -1; k <= 1; ++k)
+                    {
+                        
+                        Vector3Int neighborIndex = cellIndex;
+                        long flatNeighborIndex = GetFlatCellIndex(neighborIndex);
+
+                        uint neighborIterator = cellOffsets[flatNeighborIndex];
+
+                        
+
+                        while(neighborIterator != 9999999 && neighborIterator < totalParticles)
+                        {
+                            uint particleIndexB = particleIndices[neighborIterator];
+                            if(particleCellIndices[particleIndexB] != flatNeighborIndex)
+                            {
+                                break;  // it means we stepped out of the neighbour cell list!
+                            }
+
+                            
+                            Debug.Log("Stored Cell Index of neighbour : " + particleCellIndices[particleIndexB]  + " index of : "  + particleIndexB);
+                            Debug.Log("Calculated CEll Index of neighbour :" + GetFlatCellIndex(GetCell(particles[particleIndexB].position)));
+                            Debug.Log("Calculated CEll of neighbour:" + GetCell(particles[particleIndexB].position));
+                            
+
+                            
+                            particles[particleIndexB].visualise = new Vector3(0.0f, 1.0f, 0.0f);
+
+                            
+
+                            neighborIterator++;  // iterate...
+                        }
+
+
+                    }
+                }
+            }
+
+            _particlesBuffer.SetData(particles);
+
+        }
     }
 
 

@@ -32,7 +32,7 @@ Shader "Instanced/GridTestParticleShader" {
                 float3 currentForce;
                 float3 velocity;
 				float3 position;
-				
+				float3 visualise;
 			};
 
 		#ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
@@ -60,6 +60,12 @@ Shader "Instanced/GridTestParticleShader" {
 
 			void surf(Input IN, inout SurfaceOutputStandard o) {
 				float4 col = float4(_Color, 1.0);
+
+				#ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
+					col = float4(_particlesBuffer[unity_InstanceID].visualise,1.0);
+					
+				#endif
+
 				o.Albedo = col.rgb;
 			}
 			ENDCG

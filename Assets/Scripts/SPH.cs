@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using System.Runtime.InteropServices;
-using MergeSort;
+
 [System.Serializable]
 [StructLayout(LayoutKind.Sequential, Size=56)]
 public struct Particle {
@@ -64,8 +64,8 @@ public class SPH : MonoBehaviour
     
     private int calculateCellOffsetsKernel;
 
+    private int sortKernel;
 
-    private BitonicMergeSort mergeSort;
 
     private void OnDrawGizmos() {
 
@@ -79,16 +79,15 @@ public class SPH : MonoBehaviour
 
     }
 
+    [Header("Debug")]
+
     public uint[] particleIndices;
     public uint[] particleCellIndices;
 
     public uint[] cellOffsets;
 
-    public ComputeShader bitonicSortShader;
 
     private void Awake() { 
-
-        mergeSort = new BitonicMergeSort(bitonicSortShader);
        
         SpawnParticlesInBox(); // Spawn Particles
 
@@ -122,12 +121,23 @@ public class SPH : MonoBehaviour
         
         _particleIndices.SetData(particleIndices);
 
-        mergeSort.Init(_particleIndices);
 
         SetupComputeBuffers();
 
         shader.Dispatch(integrateKernel, totalParticles / 256, 1, 1); // 3. Use forces to move particles
 
+    }
+
+    public void Sort() {
+        var count = totalParticles;
+        
+        for (var dim = 2; dim <= count; dim <<= 1) {
+            shader.SetInt("dim", dim);
+            for (var block = dim >> 1; block > 0; block >>= 1) {
+                shader.SetInt("block", block);
+                shader.Dispatch(sortKernel, count/256, 1, 1);
+            }
+        }
     }
 
     private void SetupComputeBuffers() {
@@ -138,6 +148,7 @@ public class SPH : MonoBehaviour
         hashParticlesKernel = shader.FindKernel("HashParticles");
         clearCellOffsetsKernel = shader.FindKernel("ClearCellOffsets");
         calculateCellOffsetsKernel = shader.FindKernel("CalculateCellOffsets");
+        sortKernel = shader.FindKernel("BitonicSort");
         
         shader.SetInt("particleLength", totalParticles);
         shader.SetFloat("particleMass", particleMass);
@@ -176,13 +187,21 @@ public class SPH : MonoBehaviour
         shader.SetBuffer(calculateCellOffsetsKernel, "cellOffsets", _cellOffsets);
         shader.SetBuffer(calculateCellOffsetsKernel, "particleIndices", _particleIndices);
         shader.SetBuffer(calculateCellOffsetsKernel, "particleCellIndices", _particleCellIndices);
+
+        shader.SetBuffer(sortKernel, "particleIndices", _particleIndices);
+        shader.SetBuffer(sortKernel, "particleCellIndices", _particleCellIndices);
     }
 
 
     private void FixedUpdate() {
 
         shader.SetVector("boxSize", boxSize);
+        shader.SetFloat("particleMass", particleMass);
+        shader.SetFloat("viscosity", viscosity);
+        shader.SetFloat("gasConstant", gasConstant);
+        shader.SetFloat("restDensity", restingDensity);
         shader.SetFloat("timestep", timestep);
+
         shader.SetVector("spherePos", collisionSphere.transform.position);
         shader.SetFloat("sphereRadius", collisionSphere.transform.localScale.x/2);
 
@@ -191,7 +210,9 @@ public class SPH : MonoBehaviour
 
         shader.Dispatch(hashParticlesKernel, totalParticles / 256, 1, 1); // 0. Hash each particle
 
-        mergeSort.SortInt(_particleIndices,_particleCellIndices);
+        //mergeSort.SortInt(_particleIndices,_particleCellIndices);
+
+        Sort();
 
         shader.Dispatch(calculateCellOffsetsKernel, totalParticles/256,1,1);
 
@@ -274,7 +295,7 @@ public class SPH : MonoBehaviour
              // Total Particles has to be divisible by 100 
             shader.Dispatch(hashParticlesKernel, totalParticles / 256, 1, 1); // 0. Hash each particle
 
-            mergeSort.SortInt(_particleIndices,_particleCellIndices);
+            Sort();
 
             shader.Dispatch(calculateCellOffsetsKernel, totalParticles/256,1,1);
 

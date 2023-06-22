@@ -8,6 +8,7 @@
 #pragma kernel HashParticles // Hash particles for optimization
 #pragma kernel ClearCellOffsets
 #pragma kernel CalculateCellOffsets
+#pragma kernel BitonicSort
 
 
 struct Particle {
@@ -138,6 +139,33 @@ void Integrate (uint3 id: SV_DISPATCHTHREADID) {
 
 }
 
+int block;
+int dim;
+
+#define GROUP_SIZE 256
+#define MAX_DIM_GROUPS 1024
+#define MAX_DIM_THREADS (GROUP_SIZE * MAX_DIM_GROUPS)
+
+[numthreads(256,1,1)]
+void BitonicSort(uint3 id : SV_DispatchThreadID) {
+	uint i = id.x + id.y * MAX_DIM_THREADS;
+	uint j = i^block;
+	
+	if (j < i || i >= particleLength) 
+		return;
+	
+	uint key_i = particleIndices[i];
+	uint key_j = particleIndices[j];
+	float value_i = particleCellIndices[key_i];
+	float value_j = particleCellIndices[key_j];
+	
+	float diff = (value_i - value_j) * ((i&dim) == 0 ? 1 : -1);
+	if (diff > 0) {
+		particleIndices[i] = key_j;
+		particleIndices[j] = key_i;
+	}
+}
+
 
 float StdKernel (float distanceSquared) {
     float x = 1.0f - distanceSquared / radius2;
@@ -154,11 +182,11 @@ void ComputeDensityPressure (uint3 id: SV_DISPATCHTHREADID) {
 
     int3 cellIndex = GetCell(_particles[particleIndex].position);
     
-    for(int i = -1; i <= 1; ++i)
+    for(int i = -2; i <= 2; ++i)
     {
-        for(int j = -1; j <= 1; ++j)
+        for(int j = -2; j <= 2; ++j)
         {
-            for(int k = -1; k <= 1; ++k)
+            for(int k = -2; k <= 2; ++k)
             {
                 int3 neighborIndex = cellIndex + int3(i, j, k);
                 uint flatNeighborIndex = GetFlatCellIndex(neighborIndex);            
@@ -198,7 +226,11 @@ void ComputeDensityPressure (uint3 id: SV_DISPATCHTHREADID) {
 
     _particles[particleIndex].density = sum * particleMass + 0.000001f;
     _particles[particleIndex].pressure = gasConstant * (_particles[particleIndex].density - restDensity);
-    _particles[particleIndex].visualise = float3(_particles[particleIndex].pressure/100, _particles[particleIndex].pressure/100, _particles[particleIndex].pressure/100);
+    
+    
+    float pres = 0.03 * (_particles[particleIndex].density - restDensity);
+
+    _particles[particleIndex].visualise = float3(pres/100, pres/100, pres/100);
     
 }
 
@@ -231,11 +263,11 @@ void ComputeForces (uint3 id : SV_DISPATCHTHREADID) {
     int3 cellIndex = GetCell(_particles[particleIndex].position);
     
     _particles[0].visualise = float3(1.0, 0.0, 0.0);
-    for(int i = -1; i <= 1; ++i)
+    for(int i = -2; i <= 2; ++i)
     {
-        for(int j = -1; j <= 1; ++j)
+        for(int j = -2; j <= 2; ++j)
         {
-            for(int k = -1; k <= 1; ++k)
+            for(int k = -2; k <= 2; ++k)
             {
                 int3 neighborIndex = cellIndex + int3(i, j, k);
 
@@ -268,13 +300,15 @@ void ComputeForces (uint3 id : SV_DISPATCHTHREADID) {
                     //     continue;
                     // }
 
+                       if (particleIndex == 0) {
+                            _particles[particleIndexB].visualise = float3(0.0, 1.0, 0.0);
+                        }
+
 
                     float dist = distance(particleB.position, origin);
                     if (dist < radius * 2 ) {
                         
-                        if (particleIndex == 0) {
-                            _particles[particleIndexB].visualise = float3(0.0, 1.0, 0.0);
-                        }
+                     
                         float3 pressureGradientDirection = normalize(_particles[particleIndex].position - particleB.position);
                         
                         float3 _pressureContribution = mass2 * SpikyKernelGradient(dist, pressureGradientDirection);
@@ -283,7 +317,7 @@ void ComputeForces (uint3 id : SV_DISPATCHTHREADID) {
                         float3 _viscosityContribution = viscosity * mass2 * (particleB.velocity - _particles[particleIndex].velocity)/particleB.density;
                         _viscosityContribution *= SpikyKernelSecondDerivative(dist);
 
-                        pressure += _pressureContribution*15;
+                        pressure += _pressureContribution;
                         visc += _viscosityContribution; 
                     }
 

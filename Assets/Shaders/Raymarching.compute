@@ -18,6 +18,7 @@ struct Particle
     float3 currentForce;
     float3 velocity;
     float3 position;
+    float3 visualise;
 };
 
 StructuredBuffer<Particle> particles;

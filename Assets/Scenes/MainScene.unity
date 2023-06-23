@@ -168,8 +168,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   collisionSphere: {fileID: 1168886303}
-  showSpheres: 0
-  numToSpawn: {x: 10, y: 10, z: 10}
+  showSpheres: 1
+  numToSpawn: {x: 16, y: 16, z: 16}
   boxSize: {x: 4, y: 10, z: 3}
   spawnCenter: {x: -1.84, y: 3.85, z: -0.66}
   particleRadius: 0.1
@@ -371,7 +371,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 963194225}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 634600b3a4bbe9c438d7fa1bb527d2a0, type: 3}
   m_Name: 

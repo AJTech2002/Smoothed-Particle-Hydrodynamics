@@ -105,8 +105,6 @@ public class SPH : MonoBehaviour
 
         SetupComputeBuffers();
 
-        shader.Dispatch(integrateKernel, totalParticles / 256, 1, 1);
-
     }
 
     private void SetupComputeBuffers() {
@@ -136,6 +134,7 @@ public class SPH : MonoBehaviour
         shader.SetBuffer(integrateKernel, "_particles", _particlesBuffer);
         shader.SetBuffer(computeForceKernel, "_particles", _particlesBuffer);
         shader.SetBuffer(densityPressureKernel, "_particles", _particlesBuffer);
+        shader.SetBuffer(hashParticlesKernel, "_particles", _particlesBuffer);
 
         shader.SetBuffer(computeForceKernel, "_particleIndices", _particleIndices);
         shader.SetBuffer(densityPressureKernel, "_particleIndices", _particleIndices);
@@ -151,6 +150,7 @@ public class SPH : MonoBehaviour
         shader.SetBuffer(calculateCellOffsetsKernel, "_particleCellIndices", _particleCellIndices);
 
         shader.SetBuffer(computeForceKernel, "_cellOffsets", _cellOffsets);
+        shader.SetBuffer(hashParticlesKernel, "_cellOffsets", _cellOffsets);
         shader.SetBuffer(densityPressureKernel, "_cellOffsets", _cellOffsets);
         shader.SetBuffer(calculateCellOffsetsKernel, "_cellOffsets", _cellOffsets);
 

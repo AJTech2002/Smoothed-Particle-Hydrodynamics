@@ -19,6 +19,8 @@ https://youtu.be/zbBwKMRyavE
 
 # Version 3 
 
+Simple Lego Renderer for the Fluid Simulation based on this video https://youtu.be/LrEHoaq6QFE (`feat/lego-renderer`)
+
 ![fluid-2](https://github.com/AJTech2002/Smoothed-Particle-Hydrodynamics/assets/25098044/001bbbcb-ade1-45ce-a704-4a02c1bbb2fc)
 
 # Version 2

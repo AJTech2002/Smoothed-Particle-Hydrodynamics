@@ -15,6 +15,13 @@ public struct Particle {
     public Vector3 visualise; // 56
 }
 
+[System.Serializable]
+[StructLayout(LayoutKind.Sequential, Size=16)]
+public struct LegoParticle {
+    public Vector3 position;
+    public float pressure;
+}
+
 public class SPH : MonoBehaviour
 {
     [Header("General")]
@@ -33,7 +40,7 @@ public class SPH : MonoBehaviour
 
     [Header("Particle Rendering")]
     public Mesh particleMesh;
-    public float particleRenderSize = 8f;
+    public Vector3 particleRenderSize = new Vector3(8f, 8f, 8f);
     public Material material;
     
     [Header("Compute")]
@@ -48,6 +55,10 @@ public class SPH : MonoBehaviour
     public float restingDensity = 1f;
     public float timestep = 0.007f;
 
+    [Header("Lego")]
+    public float legoCellSize = 0.1f;
+    public float densityThreshold = 0f;
+
     // Private Variables
     private ComputeBuffer _argsBuffer;
     public ComputeBuffer _particlesBuffer;
@@ -56,6 +67,10 @@ public class SPH : MonoBehaviour
 
     public ComputeBuffer _cellOffsets;
 
+    private ComputeBuffer _legoPoints;
+
+    private ComputeBuffer _legoPointCountBuffer;
+
     private int integrateKernel;
     private int computeForceKernel;
     private int densityPressureKernel;
@@ -63,6 +78,8 @@ public class SPH : MonoBehaviour
     private int clearCellOffsetsKernel;
     
     private int calculateCellOffsetsKernel;
+
+    private int marchCubesKernel;
 
     private int sortKernel;
 
@@ -86,22 +103,40 @@ public class SPH : MonoBehaviour
 
     public uint[] cellOffsets;
 
+    private Vector3Int legoCellDim {
+        get {
+            return new Vector3Int(Mathf.RoundToInt(boxSize.x/particleRadius), Mathf.RoundToInt(boxSize.x/particleRadius), Mathf.RoundToInt(boxSize.x/particleRadius));
+        }
+    }
+
 
     private void Awake() { 
        
         SpawnParticlesInBox(); // Spawn Particles
 
         // Setup Args for Instanced Particle Rendering
+        // uint[] args = {
+        //     particleMesh.GetIndexCount(0),
+        //     (uint)totalParticles,
+        //     particleMesh.GetIndexStart(0),
+        //     particleMesh.GetBaseVertex(0),
+        //     0
+        // };
+
+        // int dimX = Mathf.RoundToInt(boxSize.x/particleRadius);
+        // int dimY = Mathf.RoundToInt(boxSize.y/particleRadius);
+        // int dimZ = Mathf.RoundToInt(boxSize.z/particleRadius);
+
         uint[] args = {
             particleMesh.GetIndexCount(0),
-            (uint)totalParticles,
+            (uint)(legoCellDim.x*legoCellDim.y*legoCellDim.z),
             particleMesh.GetIndexStart(0),
             particleMesh.GetBaseVertex(0),
             0
         };
 
         _argsBuffer = new ComputeBuffer(1,args.Length * sizeof(uint), ComputeBufferType.IndirectArguments);
-        _argsBuffer.SetData(args);
+        // _argsBuffer.SetData(args);
 
         // Setup Particle Buffer
         _particlesBuffer = new ComputeBuffer(totalParticles,56);
@@ -112,6 +147,11 @@ public class SPH : MonoBehaviour
 
         _cellOffsets = new ComputeBuffer(totalParticles, 4);
         cellOffsets = new uint[totalParticles];
+
+       
+
+        _legoPoints = new ComputeBuffer(legoCellDim.x*legoCellDim.y*legoCellDim.z, 16, ComputeBufferType.Append);
+        _legoPointCountBuffer = new ComputeBuffer (1, sizeof (int), ComputeBufferType.Raw);
 
         
         particleCellIndices = new uint[totalParticles];
@@ -149,6 +189,7 @@ public class SPH : MonoBehaviour
         clearCellOffsetsKernel = shader.FindKernel("ClearCellOffsets");
         calculateCellOffsetsKernel = shader.FindKernel("CalculateCellOffsets");
         sortKernel = shader.FindKernel("BitonicSort");
+        marchCubesKernel = shader.FindKernel("MarchCubes");
         
         shader.SetInt("particleLength", totalParticles);
         shader.SetFloat("particleMass", particleMass);
@@ -158,6 +199,8 @@ public class SPH : MonoBehaviour
         shader.SetFloat("boundDamping", boundDamping);
         shader.SetFloat("pi", Mathf.PI);
         shader.SetVector("boxSize", boxSize);
+        shader.SetFloat("legoCellSize", legoCellSize);
+        shader.SetFloat("densityThreshold", densityThreshold);
         
 
         shader.SetFloat("radius", particleRadius);
@@ -188,6 +231,12 @@ public class SPH : MonoBehaviour
         shader.SetBuffer(calculateCellOffsetsKernel, "particleIndices", _particleIndices);
         shader.SetBuffer(calculateCellOffsetsKernel, "particleCellIndices", _particleCellIndices);
 
+        shader.SetBuffer(marchCubesKernel, "_particles", _particlesBuffer);
+        shader.SetBuffer(marchCubesKernel, "particleIndices", _particleIndices);
+        shader.SetBuffer(marchCubesKernel, "particleCellIndices", _particleCellIndices);
+        shader.SetBuffer(marchCubesKernel, "cellOffsets", _cellOffsets); 
+        shader.SetBuffer(marchCubesKernel, "legoPoints", _legoPoints);
+
         shader.SetBuffer(sortKernel, "particleIndices", _particleIndices);
         shader.SetBuffer(sortKernel, "particleCellIndices", _particleCellIndices);
     }
@@ -195,12 +244,16 @@ public class SPH : MonoBehaviour
 
     private void FixedUpdate() {
 
+        shader.SetMatrix("gameObjectMatrix", Matrix4x4.TRS(transform.position, transform.rotation, transform.localScale));
         shader.SetVector("boxSize", boxSize);
         shader.SetFloat("particleMass", particleMass);
         shader.SetFloat("viscosity", viscosity);
         shader.SetFloat("gasConstant", gasConstant);
         shader.SetFloat("restDensity", restingDensity);
         shader.SetFloat("timestep", timestep);
+        
+        shader.SetFloat("legoCellSize", legoCellSize);
+        shader.SetFloat("densityThreshold", densityThreshold);
 
         shader.SetVector("spherePos", collisionSphere.transform.position);
         shader.SetFloat("sphereRadius", collisionSphere.transform.localScale.x/2);
@@ -220,7 +273,26 @@ public class SPH : MonoBehaviour
         shader.Dispatch(densityPressureKernel, totalParticles / 256, 1, 1); // 1. Compute Density/Pressure for each particle
         shader.Dispatch(computeForceKernel, totalParticles / 256, 1, 1); // 2. Use Density/Pressure to calculate forces
         shader.Dispatch(integrateKernel, totalParticles / 256, 1, 1); // 3. Use forces to move particles
-       
+        
+        
+        _legoPoints.SetCounterValue(0);
+
+        shader.Dispatch(marchCubesKernel, legoCellDim.x/10, legoCellDim.y/10, legoCellDim.z/10);
+
+        ComputeBuffer.CopyCount(_legoPoints, _legoPointCountBuffer, 0);
+
+        int[] triCountArray = { 0 };
+        _legoPointCountBuffer.GetData (triCountArray);
+
+        uint[] args = {
+            particleMesh.GetIndexCount(0),
+            (uint)triCountArray[0],
+            particleMesh.GetIndexStart(0),
+            particleMesh.GetBaseVertex(0),
+            0
+        };
+
+        _argsBuffer.SetData(args);
     }
     
 
@@ -256,6 +328,8 @@ public class SPH : MonoBehaviour
     private static readonly int SizeProperty = Shader.PropertyToID("_size");
     private static readonly int ParticlesBufferProperty = Shader.PropertyToID("_particlesBuffer");
 
+     private static readonly int LegoPointsProperty = Shader.PropertyToID("_legoPoints");
+
     Vector3Int GetCell(Vector3 position)
     {
         Vector3 halfS = boxSize/2;
@@ -275,18 +349,31 @@ public class SPH : MonoBehaviour
     private void Update() {
 
         // Render the particles
-        material.SetFloat(SizeProperty, particleRenderSize);
+        material.SetVector(SizeProperty, particleRenderSize);
         material.SetBuffer(ParticlesBufferProperty, _particlesBuffer);
+        material.SetBuffer(LegoPointsProperty, _legoPoints);
 
-        if (showSpheres) 
+        if (showSpheres) {
+
+            // Graphics.DrawMeshInstancedIndirect (
+            //     particleMesh,
+            //     0,
+            //     material,
+            //     new Bounds(Vector3.zero, boxSize),
+            //     _argsBuffer,
+            //     castShadows: UnityEngine.Rendering.ShadowCastingMode.Off
+            // );
+
             Graphics.DrawMeshInstancedIndirect (
                 particleMesh,
                 0,
                 material,
                 new Bounds(Vector3.zero, boxSize),
                 _argsBuffer,
-                castShadows: UnityEngine.Rendering.ShadowCastingMode.Off
+                castShadows: UnityEngine.Rendering.ShadowCastingMode.On
             );
+
+        }
 
         if (Input.GetKeyDown(KeyCode.Space)) {
 

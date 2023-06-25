@@ -1,3 +1,5 @@
+// With length of particle
+
 Shader "Instanced/GridTestParticleShader" {
 	Properties{
 		_MainTex("Albedo (RGB)", 2D) = "white" {}
@@ -17,7 +19,7 @@ Shader "Instanced/GridTestParticleShader" {
 			#pragma instancing_options procedural:setup
 
 			sampler2D _MainTex;
-			float _size;
+			float3 _size;
             float3 _Color;
 			float _DensityRange;
 
@@ -35,19 +37,25 @@ Shader "Instanced/GridTestParticleShader" {
 				float3 visualise;
 			};
 
+			struct LegoParticle {
+				float3 position;
+				float pressure;
+			};
+
 		#ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
 			StructuredBuffer<Particle> _particlesBuffer;
+			StructuredBuffer<LegoParticle> _legoPoints;
 		#endif
 
 			void setup()
 			{
 			#ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
-				float3 pos = _particlesBuffer[unity_InstanceID].position;
-				float size = _size;
+				float3 pos = _legoPoints[unity_InstanceID].position;
+				float3 size = _size;
 
-				unity_ObjectToWorld._11_21_31_41 = float4(size, 0, 0, 0);
-				unity_ObjectToWorld._12_22_32_42 = float4(0, size, 0, 0);
-				unity_ObjectToWorld._13_23_33_43 = float4(0, 0, size, 0);
+				unity_ObjectToWorld._11_21_31_41 = float4(size.x, 0, 0, 0);
+				unity_ObjectToWorld._12_22_32_42 = float4(0, size.y, 0, 0);
+				unity_ObjectToWorld._13_23_33_43 = float4(0, 0, size.z, 0);
 				unity_ObjectToWorld._14_24_34_44 = float4(pos.xyz, 1);
 				unity_WorldToObject = unity_ObjectToWorld;
 				unity_WorldToObject._14_24_34 *= -1;
@@ -61,10 +69,14 @@ Shader "Instanced/GridTestParticleShader" {
 			void surf(Input IN, inout SurfaceOutputStandard o) {
 				float4 col = float4(_Color, 1.0);
 
-				#ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
-					col = float4(_particlesBuffer[unity_InstanceID].visualise,1.0);
+				// #ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
+				// 	float press = (_legoPoints[unity_InstanceID].pressure)/3000;
+
+				// 	if (press < _DensityRange) {
+				// 		col = float4(1.0, 1.0, 1.0, 1.0);
+				// 	}
 					
-				#endif
+				// #endif
 
 				o.Albedo = col.rgb;
 			}

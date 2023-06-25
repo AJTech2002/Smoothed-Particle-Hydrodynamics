@@ -9,6 +9,7 @@
 #pragma kernel ClearCellOffsets
 #pragma kernel CalculateCellOffsets
 #pragma kernel BitonicSort
+#pragma kernel MarchCubes
 
 
 struct Particle {
@@ -20,11 +21,18 @@ struct Particle {
     float3 visualise;
 };
 
+struct LegoParticle {
+    float3 position;
+    float pressure;
+};
+
 RWStructuredBuffer<Particle> _particles;
 
 RWStructuredBuffer<uint> particleIndices;
 RWStructuredBuffer<uint> particleCellIndices;
 RWStructuredBuffer<uint> cellOffsets;
+
+AppendStructuredBuffer<LegoParticle> legoPoints;
 
 
 // Variable Declarations 
@@ -45,6 +53,9 @@ float timestep;
 float3 boxSize;
 float3 spherePos;
 float sphereRadius;
+float legoCellSize;
+
+float4x4 gameObjectMatrix;
 
 
 int3 GetCell(float3 position)
@@ -52,6 +63,23 @@ int3 GetCell(float3 position)
     // float3 halfS = boxSize/2;
     float3 halfS = boxSize/2;
     return int3((position.x+halfS.x) / radius, (position.y+halfS.y) / radius, (position.z+halfS.z) / radius);
+}
+
+float3 ToPositionFromCell (int3 cell) {
+    float3 halfS = boxSize/2;
+    return float3((cell.x * radius) - halfS.x, (cell.y * radius) - halfS.y, (cell.z * radius) - halfS.z);
+}
+
+int3 GetLegoCell(float3 position)
+{
+    // float3 halfS = boxSize/2;
+    float3 halfS = boxSize/2;
+    return int3((position.x+halfS.x) / legoCellSize, (position.y+halfS.y) / legoCellSize, (position.z+halfS.z) / legoCellSize);
+}
+
+float3 ToPositionFromCellLego (int3 cell) {
+    float3 halfS = boxSize/2;
+    return float3((cell.x * legoCellSize) - halfS.x, (cell.y * legoCellSize) - halfS.y, (cell.z * legoCellSize) - halfS.z);
 }
 
 int Hash(int3 cell)
@@ -100,8 +128,9 @@ void Integrate (uint3 id: SV_DISPATCHTHREADID) {
     float3 vel = _particles[id.x].velocity + ((_particles[id.x].currentForce/particleMass)*timestep);
     _particles[id.x].position += vel * timestep;
 
-    float3 topRight = boxSize/2;
-    float3 bottomLeft = -boxSize/2;
+    float4 topRight = float4((boxSize/2), 0.0);
+    float4 bottomLeft = float4((-boxSize/2), 0.0);
+
 
     // Min Boundary Enforcements
     if (_particles[id.x].position.x - radius < bottomLeft.x) {
@@ -199,8 +228,16 @@ void ComputeDensityPressure (uint3 id: SV_DISPATCHTHREADID) {
                     {
                         break;  // it means we stepped out of the neighbour cell list!
                     }
+                    
 
                     Particle particleB = _particles[particleIndexB];
+
+                    int3 neighbourCell = GetCell(particleB.position);
+
+                    if (!(neighbourCell.x == neighborIndex.x && neighbourCell.y == neighborIndex.y && neighbourCell.z == neighborIndex.z)) {
+                        neighborIterator++;
+                        continue;
+                    }
 
                     float dist = distance(particleB.position, origin);
                     if (dist < radius * 2 ) {
@@ -249,6 +286,48 @@ float3 SpikyKernelGradient (float distance, float3 direction) {
     return SpikyKernelFirstDerivative(distance)*direction;
 }
 
+float densityThreshold;
+
+[numthreads(10, 10, 10)]
+void MarchCubes (uint3 id : SV_DISPATCHTHREADID) {
+    int3 cellIndex = int3(id.x, id.y, id.z); // Lego Cell Size
+    uint flatCellIndex = GetFlatCellIndex(cellIndex);
+    uint particleIterator = cellOffsets[flatCellIndex];
+
+    float densitySum = 0; 
+
+    while(particleIterator != 9999999 && particleIterator < particleLength)
+    {
+        uint particleIndexB = particleIndices[particleIterator];
+        if(particleCellIndices[particleIndexB] != flatCellIndex)
+        {
+            break;  // it means we stepped out of the neighbour cell list!
+        }
+
+        Particle particleB = _particles[particleIndexB];
+
+        int3 neighbourCell = GetCell(particleB.position);
+
+        if (neighbourCell.x == cellIndex.x && neighbourCell.y == cellIndex.y && neighbourCell.z == cellIndex.z) {
+            // There exists a particle in this     
+            densitySum += 1;
+            if (densitySum >= densityThreshold) {
+
+                LegoParticle lego;
+                lego.position = ToPositionFromCellLego(GetLegoCell(particleB.position));
+                lego.pressure = particleB.pressure;
+
+                legoPoints.Append(lego);
+                break;
+            }
+        }
+
+        particleIterator++;
+    }
+
+    
+}
+
 [numthreads(256,1,1)]
 void ComputeForces (uint3 id : SV_DISPATCHTHREADID) {
 
@@ -289,6 +368,12 @@ void ComputeForces (uint3 id : SV_DISPATCHTHREADID) {
 
                     Particle particleB = _particles[particleIndexB];
 
+                    int3 neighbourCell = GetCell(particleB.position);
+
+                    if (!(neighbourCell.x == neighborIndex.x && neighbourCell.y == neighborIndex.y && neighbourCell.z == neighborIndex.z)) {
+                        neighborIterator++;
+                        continue;
+                    }
                     
                     if (origin.x == particleB.position.x && origin.y == particleB.position.y && origin.z == particleB.position.z) {
                         neighborIterator++;
@@ -329,33 +414,11 @@ void ComputeForces (uint3 id : SV_DISPATCHTHREADID) {
         }
     }
     
-    
-    // for (int i = 0; i < particleLength; i++) {
-
-    //     if (origin.x == _particles[i].position.x && origin.y == _particles[i].position.y && origin.z == _particles[i].position.z) {
-    //         continue;
-    //     }
-
-    //     float dist = distance(_particles[i].position, origin);
-    //     if (dist < radius * 2) {
-    //         float3 pressureGradientDirection = normalize(_particles[id.x].position - _particles[i].position);
-            
-    //         float3 _pressureContribution = mass2 * SpikyKernelGradient(dist, pressureGradientDirection);
-    //         _pressureContribution *= (_particles[id.x].pressure / density2 + _particles[i].pressure / (_particles[i].density * _particles[i].density));
-
-    //         float3 _viscosityContribution = viscosity * mass2 * (_particles[i].velocity - _particles[id.x].velocity)/_particles[i].density;
-    //         _viscosityContribution *= SpikyKernelSecondDerivative(dist);
-
-    //         pressure += _pressureContribution;
-    //         visc += _viscosityContribution; 
-    //     }
-
-    // }
 
     _particles[particleIndex].currentForce = float3(0,-9.81*particleMass,0) - pressure + visc;
 
     float3 colDir = _particles[particleIndex].position - spherePos;
     if (length(colDir) < sphereRadius) {
-        _particles[particleIndex].currentForce += colDir * 300;
+        _particles[particleIndex].currentForce += colDir * 300 + float3(0,1,0)*200;
     }
 }

@@ -17,6 +17,10 @@ https://youtu.be/zbBwKMRyavE
 - Adding refraction & transparency to visuals
 - Adding physical interaction between a rigidbody & water
 
+# Version 3 
+
+![fluid-2](https://github.com/AJTech2002/Smoothed-Particle-Hydrodynamics/assets/25098044/001bbbcb-ade1-45ce-a704-4a02c1bbb2fc)
+
 # Version 2
 
 Optimized SPH with 32,000+ particles using Dynamic Hashed Grid (`feat/optimization`)

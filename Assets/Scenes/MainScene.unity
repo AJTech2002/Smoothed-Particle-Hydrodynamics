@@ -495,7 +495,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   collisionSphere: {fileID: 1168886303}
   showSpheres: 1
-  numToSpawn: {x: 16, y: 32, z: 32}
+  numToSpawn: {x: 16, y: 16, z: 16}
   boxSize: {x: 10, y: 10, z: 10}
   spawnCenter: {x: 0.07, y: -3.63, z: -0.68}
   particleRadius: 0.1
@@ -516,6 +516,7 @@ MonoBehaviour:
   particleIndices: 
   particleCellIndices: 
   cellOffsets: 
+  frameOffset: 60
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0

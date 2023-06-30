@@ -152,7 +152,8 @@ public class SPH : MonoBehaviour
 
         _legoPoints = new ComputeBuffer(legoCellDim.x*legoCellDim.y*legoCellDim.z, 16, ComputeBufferType.Append);
         _legoPointCountBuffer = new ComputeBuffer (1, sizeof (int), ComputeBufferType.Raw);
-
+        
+        material.SetBuffer(LegoPointsProperty, _legoPoints);
         
         particleCellIndices = new uint[totalParticles];
 
@@ -346,15 +347,19 @@ public class SPH : MonoBehaviour
         return n;
     }
 
+    public int frameOffset;
+
+    private int frameCounter = 0;
+
     private void Update() {
 
         // Render the particles
         material.SetVector(SizeProperty, particleRenderSize);
         material.SetBuffer(ParticlesBufferProperty, _particlesBuffer);
-        material.SetBuffer(LegoPointsProperty, _legoPoints);
+       
 
         if (showSpheres) {
-
+            frameCounter += 1;
             // Graphics.DrawMeshInstancedIndirect (
             //     particleMesh,
             //     0,
@@ -363,6 +368,10 @@ public class SPH : MonoBehaviour
             //     _argsBuffer,
             //     castShadows: UnityEngine.Rendering.ShadowCastingMode.Off
             // );
+            if (frameCounter > frameOffset) {
+                 
+                frameCounter = 0;
+            }
 
             Graphics.DrawMeshInstancedIndirect (
                 particleMesh,

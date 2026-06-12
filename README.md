@@ -1,3 +1,5 @@
+Heavily inspired by the following repository [[https://github.com/Gornhoth/Unity-Smoothed-Particle-Hydrodynamics/]].
+
 # Smoothed Particle Hydrodynamics Unity
 
 Very basic implementation of realtime fluid simulation using the SPH algorithm.

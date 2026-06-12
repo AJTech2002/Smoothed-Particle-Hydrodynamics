@@ -1,4 +1,4 @@
-This code is heavily inspired by the following repository https://github.com/Gornhoth/Unity-Smoothed-Particle-Hydrodynamics 
+This code is heavily inspired by the following repository https://github.com/Gornhoth/Unity-Smoothed-Particle-Hydrodynamics please be sure to check it out.
 
 # Smoothed Particle Hydrodynamics Unity
 
